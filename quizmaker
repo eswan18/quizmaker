@@ -1,0 +1,86 @@
+#!/usr/bin/env python
+
+import sys
+import random
+import os
+
+import yaml
+from markdown import markdown
+
+print(yaml.__version__)
+lkjsdflk
+
+NO_SHUFFLE = False
+NO_SHUFFLE = True
+
+def arg_check(args):
+    if len(args) != 2:
+        msg = 'Invalid arguments -- invoke with `quizmaker <quizfile>`'
+        raise ValueError(msg)
+
+def shuffle_quiz(quiz):
+    # Shuffle the questions
+    random.shuffle(quiz['questions'])
+    # Shuffle the options of each question
+    for q in quiz['questions']:
+        random.shuffle(q['options'])
+
+def make_ol(strings, ol_type='1'):
+    '''Make an ordered list out of some html strings.'''
+    html = '</li><li>'.join(strings)
+    html = f'<ol type="{ol_type}"><li>{html}</li></ol>'
+    return html
+
+def gen_question_html(question):
+    question_text = question['question']
+    question_md = markdown(question_text)
+    # Convert each answer option to markdown.
+    question_options_md_list = [markdown(option) for option in question['options']]
+    # Create an ordered list out of these options.
+    question_options_md = make_ol(question_options_md_list, ol_type='a')
+    # Some questions have an "additional_resource" field; it needs to be included.
+    if question.get('additional_resource'):
+        question_md += markdown(question['additional_resource'])
+    # Merge the question with its options.
+    question_md += question_options_md
+    return question_md
+
+def gen_html(quiz, version=1):
+    q_html = [gen_question_html(q) for q in quiz['questions']]
+    n_questions = len(q_html)
+    if quiz.get('css'):
+        css_html = '<style type="text/css">' + quiz['css'] + '</style>'
+    else:
+        css_html = ''
+    head_html = '<head>' + css_html + '</head>'
+    title_html = '<h1>' + quiz['title'] + '</h1>'
+    desc_html = f'<p><em>Version {version}<br>{n_questions} questions</em></p>'
+    body_html = '<body>' + title_html + desc_html + make_ol(q_html) + '</body>'
+    return head_html + body_html
+
+
+def main(argv):
+    arg_check(argv)
+    quiz_file = argv[1]
+    # The quiz_name should be the quiz_file with its extension removed.
+    quiz_name = '.'.join(quiz_file.split('.')[:-1])
+    # Create a folder for output.
+    out_folder = quiz_name + '_quizmaker'
+    os.makedirs(out_folder, exist_ok=True)
+    with open(quiz_file, 'r') as f:
+        quiz = yaml.safe_load(f)
+    # Shuffle the questions and options for each question.
+    if not NO_SHUFFLE:
+        shuffle_quiz(quiz)
+    # Create as many randomly-shuffled quizzes as the user requested.
+    results = [gen_html(quiz, v_num + 1) for v_num in range(quiz.get('versions', 1))]
+    # Generate filenames for each output.
+    result_names = [f'{out_folder}/{quiz_name}_ver_{i + 1}.html'
+                    for i in range(len(results))]
+    # Save each result.
+    for result, result_name in zip(results, result_names):
+        with open(result_name, 'w') as f:
+            f.write(result)
+
+if __name__ == '__main__':
+    main(sys.argv)
