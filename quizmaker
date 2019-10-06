@@ -3,26 +3,73 @@
 import sys
 import random
 import os
+from typing import List, Optional
+from pprint import pprint
+from dataclasses import dataclass
 
 import yaml
 from markdown import markdown
-import getopt
 
 NO_SHUFFLE = False
-NO_SHUFFLE = True
 N_VERSIONS = 1
 
-def arg_check(args):
-    if len(args) != 2:
-        msg = 'Invalid arguments -- invoke with `quizmaker <quizfile>`'
-        raise ValueError(msg)
+@dataclass
+class Quiz:
+    questions: List
 
-def shuffle_quiz(quiz):
-    # Shuffle the questions
-    random.shuffle(quiz['questions'])
-    # Shuffle the options of each question
-    for q in quiz['questions']:
-        random.shuffle(q['options'])
+    def shuffle(self):
+        random.shuffle(self.questions)
+        [q.shuffle() for q in self.questions]
+
+    @classmethod
+    def from_question_list(cls, question_list):
+        questions = [Question(prompt=q['prompt'],
+                              options=q.get('options'),
+                              additional_resource = q.get('additional_resource'),
+                              answer=q.get('answer'),
+                              fixed_order = q.get('fixed_order', False))
+                     for q in question_list]
+        quiz = cls(questions=questions)
+        return quiz
+
+class Question:
+    def __init__(self, prompt, additional_resource='', options=None,
+                 answer=None, fixed_order=False):
+        self.prompt = markdown(prompt)
+        self.additional_resource = additional_resource
+        if options is not None:
+            self.options = [markdown(option) for option in options]
+        else:
+            self.options = None
+        # If no correct answer is specified, assume 'a'.
+        self.answer = answer or 'a'
+        self.fixed_order = fixed_order
+
+    def render_test_html(self) -> str:
+        prompt_html = self.prompt
+        if self.additional_resource:
+            additional_resource_html = self.additional_resource + '<br>'
+        else:
+            additional_resource_html = ''
+        # If the question has options, render them as an <ol>.
+        if self.options:
+            options_html = make_ol(self.options, ol_type='a')
+        # If the question doesn't have options, it's a short answer and needs some space
+        else:
+            options_html = '<br>' * 4
+        result_html = (prompt_html +
+                       additional_resource_html +
+                       options_html)
+        return result_html
+
+    def render_solution_html(self) -> str:
+        return '<br>'.join([self.prompt,
+                            self.additional_resource,
+                            self.correct_answer])
+
+    def shuffle(self) -> None:
+        if self.options:
+            random.shuffle(self.options)
 
 def make_ol(strings, ol_type='1'):
     '''Make an ordered list out of some html strings.'''
@@ -30,35 +77,17 @@ def make_ol(strings, ol_type='1'):
     html = f'<ol type="{ol_type}"><li>{html}</li></ol>'
     return html
 
-def gen_question_html(question):
-    question_text = question['question']
-    question_md = markdown(question_text)
-    # Multiple choice questions have an "options" field -- short answer
-    # questions don't.
-    if 'options' in question:
-        # Convert each answer option to markdown.
-        question_options_md_list = [markdown(option) for option in question['options']]
-        # Create an ordered list out of these options.
-        question_options_md = make_ol(question_options_md_list, ol_type='a')
-    else:
-        # Short answer -- leave some space for student to write.
-        question_options_md = '<br>' * 4
-    # Some questions have an "additional_resource" field; it needs to be included.
-    if question.get('additional_resource'):
-        question_md += markdown(question['additional_resource'])
-    # Merge the question with its options.
-    question_md += question_options_md
-    return question_md
+def arg_check(args):
+    if len(args) != 2:
+        msg = 'Invalid arguments -- invoke with `quizmaker <quizfile>`'
+        raise ValueError(msg)
 
-def gen_html(quiz, version=1):
-    q_html = [gen_question_html(q) for q in quiz['questions']]
+def gen_html(quiz, title='My Quiz', css='', version=1):
+    q_html = [q.render_test_html() for q in quiz.questions]
     n_questions = len(q_html)
-    if quiz.get('css'):
-        css_html = '<style type="text/css">' + quiz['css'] + '</style>'
-    else:
-        css_html = ''
+    css_html = '<style type="text/css">' + css + '</style>'
     head_html = '<head>' + css_html + '</head>'
-    title_html = '<h1>' + quiz['title'] + '</h1>'
+    title_html = '<h1>' + title + '</h1>'
     desc_html = f'<p><em>Version {version}<br>{n_questions} questions</em></p>'
     body_html = '<body>' + title_html + desc_html + make_ol(q_html) + '</body>'
     return head_html + body_html
@@ -73,13 +102,18 @@ def main(argv):
     out_folder = quiz_name + '_quizmaker'
     os.makedirs(out_folder, exist_ok=True)
     with open(quiz_file, 'r') as f:
-        quiz = yaml.safe_load(f)
-    # Shuffle the questions and options for each question.
+        quiz_data = yaml.safe_load(f)
+    quiz = Quiz.from_question_list(quiz_data['questions'])
     if not NO_SHUFFLE:
-        shuffle_quiz(quiz)
+        quiz.shuffle()
+    html = gen_html(quiz,
+                    title=quiz_data.get('title', 'My Quiz'),
+                    css=quiz_data.get('css', ''))
+    print(html)
     # Create as many randomly-shuffled quizzes as the user requested.
-    results = [gen_html(quiz, v_num + 1) for v_num in range(N_VERSIONS)]
+    # results = [gen_html(quiz, v_num + 1) for v_num in range(N_VERSIONS)]
     # Generate filenames for each output.
+    results = []
     result_names = [f'{out_folder}/{quiz_name}_ver_{i + 1}.html'
                     for i in range(len(results))]
     # Save each result.
