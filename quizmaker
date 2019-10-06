@@ -3,15 +3,12 @@
 import sys
 import random
 import os
-from typing import List, Optional
-from pprint import pprint
+from typing import List
 from dataclasses import dataclass
+from argparse import ArgumentParser
 
 import yaml
 from markdown import markdown
-
-NO_SHUFFLE = False
-N_VERSIONS = 1
 
 @dataclass
 class Quiz:
@@ -31,6 +28,17 @@ class Quiz:
                      for q in question_list]
         quiz = cls(questions=questions)
         return quiz
+
+    def render_html(self, title, css='', version=1):
+        q_html = [q.render_test_html() for q in self.questions]
+        n_questions = len(q_html)
+        css_html = '<style type="text/css">' + css + '</style>'
+        head_html = '<head>' + css_html + '</head>'
+        title_html = '<h1>' + title + '</h1>'
+        desc_html = f'<p><em>Version {version}<br>{n_questions} questions</em></p>'
+        body_html = '<body>' + title_html + desc_html + make_ol(q_html) + '</body>'
+        return head_html + body_html
+
 
 class Question:
     def __init__(self, prompt, additional_resource='', options=None,
@@ -77,10 +85,18 @@ def make_ol(strings, ol_type='1'):
     html = f'<ol type="{ol_type}"><li>{html}</li></ol>'
     return html
 
-def arg_check(args):
-    if len(args) != 2:
-        msg = 'Invalid arguments -- invoke with `quizmaker <quizfile>`'
-        raise ValueError(msg)
+def parse_args():
+    parser = ArgumentParser()
+    parser.add_argument('quiz_filepath',
+                        help='path to the yaml file of the quiz')
+    parser.add_argument('-n', '--nversions',
+                        type=int, default=1,
+                        help='number of versions to create')
+    parser.add_argument('-u', '--unshuffled',
+                        action='store_true',
+                        help="don't shuffle questions and options")
+    args = parser.parse_args()
+    return args
 
 def gen_html(quiz, title='My Quiz', css='', version=1):
     q_html = [q.render_test_html() for q in quiz.questions]
@@ -92,34 +108,30 @@ def gen_html(quiz, title='My Quiz', css='', version=1):
     body_html = '<body>' + title_html + desc_html + make_ol(q_html) + '</body>'
     return head_html + body_html
 
-
-def main(argv):
-    arg_check(argv)
-    quiz_file = argv[1]
+def main():
+    args = parse_args()
     # The quiz_name should be the quiz_file with its extension removed.
-    quiz_name = '.'.join(quiz_file.split('.')[:-1])
+    # TODO If the quiz is outside the current directory (ie this is a path
+    # with slashes) this will produce a nonsense quiz_name.
+    quiz_name = '.'.join(args.quiz_filepath.split('.')[:-1])
     # Create a folder for output.
     out_folder = quiz_name + '_quizmaker'
     os.makedirs(out_folder, exist_ok=True)
-    with open(quiz_file, 'r') as f:
+    with open(args.quiz_filepath, 'r') as f:
         quiz_data = yaml.safe_load(f)
-    quiz = Quiz.from_question_list(quiz_data['questions'])
-    if not NO_SHUFFLE:
-        quiz.shuffle()
-    html = gen_html(quiz,
-                    title=quiz_data.get('title', 'My Quiz'),
-                    css=quiz_data.get('css', ''))
-    print(html)
-    # Create as many randomly-shuffled quizzes as the user requested.
-    # results = [gen_html(quiz, v_num + 1) for v_num in range(N_VERSIONS)]
-    # Generate filenames for each output.
-    results = []
-    result_names = [f'{out_folder}/{quiz_name}_ver_{i + 1}.html'
-                    for i in range(len(results))]
-    # Save each result.
-    for result, result_name in zip(results, result_names):
+    for i in range(args.nversions):
+        quiz = Quiz.from_question_list(quiz_data['questions'])
+        if not args.unshuffled:
+            quiz.shuffle()
+        html = gen_html(quiz,
+                        title=quiz_data.get('title', 'My Quiz'),
+                        css=quiz_data.get('css', ''))
+        html = quiz.render_html(title=quiz_data.get('title', 'My Quiz'),
+                                css=quiz_data.get('css', ''),
+                                version=i+1)
+        result_name = f'{out_folder}/{quiz_name}_ver_{i + 1}.html'
         with open(result_name, 'w') as f:
-            f.write(result)
+            f.write(html)
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()
