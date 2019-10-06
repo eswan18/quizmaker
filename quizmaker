@@ -6,12 +6,11 @@ import os
 
 import yaml
 from markdown import markdown
-
-print(yaml.__version__)
-lkjsdflk
+import getopt
 
 NO_SHUFFLE = False
 NO_SHUFFLE = True
+N_VERSIONS = 1
 
 def arg_check(args):
     if len(args) != 2:
@@ -34,10 +33,16 @@ def make_ol(strings, ol_type='1'):
 def gen_question_html(question):
     question_text = question['question']
     question_md = markdown(question_text)
-    # Convert each answer option to markdown.
-    question_options_md_list = [markdown(option) for option in question['options']]
-    # Create an ordered list out of these options.
-    question_options_md = make_ol(question_options_md_list, ol_type='a')
+    # Multiple choice questions have an "options" field -- short answer
+    # questions don't.
+    if 'options' in question:
+        # Convert each answer option to markdown.
+        question_options_md_list = [markdown(option) for option in question['options']]
+        # Create an ordered list out of these options.
+        question_options_md = make_ol(question_options_md_list, ol_type='a')
+    else:
+        # Short answer -- leave some space for student to write.
+        question_options_md = '<br>' * 4
     # Some questions have an "additional_resource" field; it needs to be included.
     if question.get('additional_resource'):
         question_md += markdown(question['additional_resource'])
@@ -73,7 +78,7 @@ def main(argv):
     if not NO_SHUFFLE:
         shuffle_quiz(quiz)
     # Create as many randomly-shuffled quizzes as the user requested.
-    results = [gen_html(quiz, v_num + 1) for v_num in range(quiz.get('versions', 1))]
+    results = [gen_html(quiz, v_num + 1) for v_num in range(N_VERSIONS)]
     # Generate filenames for each output.
     result_names = [f'{out_folder}/{quiz_name}_ver_{i + 1}.html'
                     for i in range(len(results))]
