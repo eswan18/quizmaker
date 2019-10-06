@@ -73,11 +73,25 @@ class Question:
     def render_solution_html(self) -> str:
         return '<br>'.join([self.prompt,
                             self.additional_resource,
-                            self.correct_answer])
+                            self.answer])
 
     def shuffle(self) -> None:
-        if self.options:
-            random.shuffle(self.options)
+        if self.options and not self.fixed_order:
+            # Generate a new order (eg 2,0,1,3)
+            order = list(range(len(self.options)))
+            random.shuffle(order)
+            self.options = [self.options[i] for i in order]
+            # Update the correct answer based on where the old correct answer
+            # ended up.
+            answer_map = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5}
+            rev_answer_map = ['a', 'b', 'c', 'd', 'e', 'f']
+            # Get the index of the old right answer from its letter position.
+            old_answer_index = answer_map[self.answer]
+            new_answer_index = order.index(old_answer_index)
+            # Translate back to a letter.
+            new_answer_letter = rev_answer_map[new_answer_index]
+            self.answer = new_answer_letter
+            
 
 def make_ol(strings, ol_type='1'):
     '''Make an ordered list out of some html strings.'''
