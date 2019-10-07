@@ -29,7 +29,7 @@ class Quiz:
         quiz = cls(questions=questions)
         return quiz
 
-    def render_html(self, title, css='', version=1):
+    def render_test_html(self, title, css='', version=1):
         q_html = [q.render_test_html() for q in self.questions]
         n_questions = len(q_html)
         css_html = '<style type="text/css">' + css + '</style>'
@@ -38,7 +38,16 @@ class Quiz:
         desc_html = f'<p><em>Version {version}<br>{n_questions} questions</em></p>'
         body_html = '<body>' + title_html + desc_html + make_ol(q_html) + '</body>'
         return head_html + body_html
-
+    
+    def render_answer_key_html(self, title, css='', version=1, verbose=False):
+        q_html = [q.render_answer_key_html(verbose=verbose)
+                  for q in self.questions]
+        css_html = '<style type="text/css">' + css + '</style>'
+        head_html = '<head>' + css_html + '</head>'
+        title_html = '<h1>' + title + '</h1>'
+        desc_html = f'<p><em>Version {version}<br>Answer Key</em></p>'
+        body_html = '<body>' + title_html + desc_html + make_ol(q_html) + '</body>'
+        return head_html + body_html
 
 class Question:
     def __init__(self, prompt, additional_resource='', options=None,
@@ -70,10 +79,20 @@ class Question:
                        options_html)
         return result_html
 
-    def render_solution_html(self) -> str:
-        return '<br>'.join([self.prompt,
-                            self.additional_resource,
-                            self.answer])
+    def render_answer_key_html(self, verbose=False) -> str:
+        prompt_html = self.prompt
+        if self.additional_resource:
+            additional_resource_html = self.additional_resource + '<br>'
+        else:
+            additional_resource_html = ''
+        answer_html = markdown(self.answer)
+        if verbose:
+            result_html = (prompt_html +
+                           additional_resource_html +
+                           answer_html)
+        else:
+            result_html = answer_html
+        return result_html
 
     def shuffle(self) -> None:
         if self.options and not self.fixed_order:
@@ -137,15 +156,17 @@ def main():
         quiz = Quiz.from_question_list(quiz_data['questions'])
         if not args.unshuffled:
             quiz.shuffle()
-        html = gen_html(quiz,
-                        title=quiz_data.get('title', 'My Quiz'),
-                        css=quiz_data.get('css', ''))
-        html = quiz.render_html(title=quiz_data.get('title', 'My Quiz'),
-                                css=quiz_data.get('css', ''),
-                                version=i+1)
-        result_name = f'{out_folder}/{quiz_name}_ver_{i + 1}.html'
-        with open(result_name, 'w') as f:
-            f.write(html)
+        title = quiz_data.get('title', 'My Quiz')
+        css = quiz_data.get('css', '')
+        quiz_html = quiz.render_test_html(title=title, css=css, version=i+1)
+        quiz_key_html = quiz.render_answer_key_html(title=title, css=css,
+                                                     version=i+1)
+        quiz_file_name = f'{out_folder}/{quiz_name}_ver_{i + 1}.html'
+        quiz_key_file_name = f'{out_folder}/{quiz_name}_ver_{i + 1}_answer_key.html'
+        with open(quiz_file_name, 'w') as f:
+            f.write(quiz_html)
+        with open(quiz_key_file_name, 'w') as f:
+            f.write(quiz_key_html)
 
 if __name__ == '__main__':
     main()
