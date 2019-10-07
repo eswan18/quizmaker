@@ -1,0 +1,3 @@
+# Don't want to accidentally commit test files...
+*.html
+*.yml
